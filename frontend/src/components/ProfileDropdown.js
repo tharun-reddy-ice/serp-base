@@ -242,11 +242,13 @@ const ProfileDropdown = ({ onLogout, onThemeChange, user }) => {
           width: 100%;
           text-align: left;
           transition: all 0.2s ease;
+          color: var(--text-color) !important;
         }
         
         .dropdown-item:hover {
-          background: rgba(255, 255, 255, 0.1);
+          background: var(--dropdown-item-hover);
           transform: translateX(5px);
+          color: var(--text-color) !important;
         }
         
         .btn-close {

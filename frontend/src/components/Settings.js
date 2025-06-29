@@ -28,7 +28,7 @@ const Settings = ({ onClose, onThemeChange }) => {
 
   const handleThemeChange = (theme) => {
     setSettings({...settings, theme});
-    // Apply theme immediately for preview
+    // Apply theme immediately for preview (but don't save yet)
     onThemeChange(theme);
   };
 

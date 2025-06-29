@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-import argparse
 import json
+import time
 from datetime import datetime
 from yt_dlp import YoutubeDL
+
+# 🎯 Change this list to include your search terms
+SEARCH_TERMS = [
+    "Alan Turing",
+    "Open source AI tools",
+    "GPT-4 applications"
+]
+
+MAX_RESULTS = 10  # Number of videos per search
+OUTPUT_PATH = "hardcoded_youtube_results.json"  # Output file
 
 def search_and_filter(query: str, max_results: int):
     ydl_opts = {
@@ -18,39 +28,33 @@ def search_and_filter(query: str, max_results: int):
         if not entry:
             continue
         results.append({
-            "youtube_url":      entry.get("webpage_url"),
-            "video_id":         entry.get("id"),
-            "upload_date":      entry.get("upload_date"),        # YYYYMMDD
-            "like_count":       entry.get("like_count"),
-            "dislike_count":    entry.get("dislike_count"),
-            "duration":         entry.get("duration"),           # seconds
-            "added_date":       now_iso,                         # script run time
-            "creator_name":     entry.get("uploader"),
-            "description":      entry.get("description"),
+            "youtube_url":   entry.get("webpage_url"),
+            "video_id":      entry.get("id"),
+            "upload_date":   entry.get("upload_date"),
+            "like_count":    entry.get("like_count"),
+            "dislike_count": entry.get("dislike_count"),
+            "duration":      entry.get("duration"),
+            "added_date":    now_iso,
+            "creator_name":  entry.get("uploader"),
+            "description":   entry.get("description"),
         })
     return results
 
-# Standardized function for backend integration
 def scrape_youtube_data(search_term, max_results=20):
-    """Search YouTube and return standardized JSON data"""
-    import time
-    
     try:
         videos = search_and_filter(search_term, max_results)
-        
         summary = {
             'total_products': len(videos),
             'videos_with_likes': len([v for v in videos if v.get('like_count', 0) > 0]),
             'total_duration': sum([v.get('duration', 0) for v in videos if v.get('duration')]),
             'unique_creators': len(set([v.get('creator_name') for v in videos if v.get('creator_name')]))
         }
-        
         return {
             'search_term': search_term,
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             'total_results': len(videos),
             'summary': summary,
-            'products': videos,  # Using 'products' for consistency with other scrapers
+            'products': videos,
             'source': 'youtube'
         }
     except Exception as e:
@@ -65,17 +69,13 @@ def scrape_youtube_data(search_term, max_results=20):
         }
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(
-        description="Search YouTube with yt-dlp and output selected metadata as JSON"
-    )
-    p.add_argument('query', help='Search term')
-    p.add_argument('--max-results', type=int, default=50,
-                   help='How many videos to fetch')
-    p.add_argument('--output', default='filtered_results.json',
-                   help='Path to output JSON')
-    args = p.parse_args()
+    all_results = []
+    for term in SEARCH_TERMS:
+        print(f"Searching: {term}")
+        result = scrape_youtube_data(term, MAX_RESULTS)
+        all_results.append(result)
 
-    filtered = search_and_filter(args.query, args.max_results)
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(filtered, f, ensure_ascii=False, indent=2)
-    print(f"Saved {len(filtered)} items to {args.output}")
+    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, ensure_ascii=False, indent=2)
+    
+    print(f"\nSaved {len(all_results)} search results to {OUTPUT_PATH}")

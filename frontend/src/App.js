@@ -3,6 +3,9 @@ import axios from 'axios';
 import ProfileDropdown from './components/ProfileDropdown';
 import Login from './components/Login';
 import RequestsPage from './components/RequestsPage';
+import Analytics from './components/Analytics';
+import TableView from './components/TableView';
+import { exportData } from './utils/exportUtils';
 
 function App() {
   const [scrapers, setScrapers] = useState({});
@@ -16,6 +19,12 @@ function App() {
   const [theme, setTheme] = useState('black');
   const [showRequests, setShowRequests] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [viewMode, setViewMode] = useState('formatted'); // 'json', 'formatted', 'table'
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [totalRows, setTotalRows] = useState(0);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -40,6 +49,40 @@ function App() {
     }
   }, []);
 
+  // Close dropdown when clicking outside or window resize
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showExportDropdown && 
+          !event.target.closest('.dropdown') && 
+          !event.target.closest('.dropdown-menu') && 
+          !event.target.closest('.export-dropdown-portal')) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    const handleResize = () => {
+      if (showExportDropdown) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    const handleScroll = () => {
+      if (showExportDropdown) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll, true);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [showExportDropdown]);
+
   const applyTheme = (themeName) => {
     const body = document.body;
     const themes = {
@@ -52,8 +95,15 @@ function App() {
     body.style.color = themeName === 'white' ? '#000000' : '#ffffff';
     
     // Update CSS custom properties for theme
-    document.documentElement.style.setProperty('--text-color', themeName === 'white' ? '#000000' : '#ffffff');
-    document.documentElement.style.setProperty('--text-muted', themeName === 'white' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)');
+    const isWhiteTheme = themeName === 'white';
+    document.documentElement.style.setProperty('--text-color', isWhiteTheme ? '#000000' : '#ffffff');
+    document.documentElement.style.setProperty('--text-muted', isWhiteTheme ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)');
+    document.documentElement.style.setProperty('--card-bg', isWhiteTheme ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)');
+    document.documentElement.style.setProperty('--card-border', isWhiteTheme ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)');
+    document.documentElement.style.setProperty('--input-bg', isWhiteTheme ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.1)');
+    document.documentElement.style.setProperty('--input-border', isWhiteTheme ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)');
+    document.documentElement.style.setProperty('--dropdown-bg', isWhiteTheme ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)');
+    document.documentElement.style.setProperty('--dropdown-item-hover', isWhiteTheme ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)');
   };
 
   const handleLogin = (username) => {
@@ -73,6 +123,7 @@ function App() {
   const handleThemeChange = (newTheme) => {
     setTheme(newTheme);
     applyTheme(newTheme);
+    // Don't clear any existing data when changing themes
   };
 
   const fetchScrapers = async () => {
@@ -105,6 +156,26 @@ function App() {
     setParameters(prev => ({ ...prev, [paramName]: value }));
   };
 
+  const logApiCall = (scraper, success, error = null) => {
+    const apiCalls = JSON.parse(localStorage.getItem('apiCallHistory') || '[]');
+    const newCall = {
+      id: Date.now(),
+      scraper: scraper,
+      success: success,
+      timestamp: new Date().toISOString(),
+      error: error,
+      parameters: parameters
+    };
+    apiCalls.push(newCall);
+    
+    // Keep only last 1000 calls to prevent storage bloat
+    if (apiCalls.length > 1000) {
+      apiCalls.splice(0, apiCalls.length - 1000);
+    }
+    
+    localStorage.setItem('apiCallHistory', JSON.stringify(apiCalls));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -119,25 +190,42 @@ function App() {
 
       if (response.data.success) {
         setResults(response.data.data);
+        setTotalRows(response.data.data.products?.length || 0);
+        setSelectedRows(new Set());
+        logApiCall(selectedScraper, true);
       } else {
-        setError(response.data.error || 'Scraping failed');
+        const errorMsg = response.data.error || 'Scraping failed';
+        setError(errorMsg);
+        logApiCall(selectedScraper, false, errorMsg);
       }
     } catch (error) {
-      setError(error.response?.data?.error || 'Network error occurred');
+      const errorMsg = error.response?.data?.error || 'Network error occurred';
+      setError(errorMsg);
+      logApiCall(selectedScraper, false, errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  const exportResults = () => {
+  const handleExport = (format, exportType = 'all') => {
     if (!results) return;
-    const dataStr = JSON.stringify(results, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    const exportFileDefaultName = `${selectedScraper}_${results.search_term}_${Date.now()}.json`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    
+    let dataToExport;
+    let filenamePrefix;
+    
+    if (exportType === 'selected' && selectedRows.size > 0) {
+      // Export only selected rows
+      const selectedData = Array.from(selectedRows).map(index => results.products[index]);
+      dataToExport = { products: selectedData, summary: { total_products: selectedData.length } };
+      filenamePrefix = `${selectedScraper}_selected_${selectedRows.size}_rows`;
+    } else {
+      // Export all data
+      dataToExport = results;
+      filenamePrefix = `${selectedScraper}_all_${results.products?.length || 0}_rows`;
+    }
+    
+    const filename = `${filenamePrefix}_${Date.now()}`;
+    exportData(dataToExport, format, filename);
   };
 
   // Show login page if not logged in
@@ -171,6 +259,13 @@ function App() {
               style={{ textDecoration: 'none' }}
             >
               About Us
+            </button>
+            <button 
+              className="btn btn-link text-white me-3" 
+              onClick={() => setShowAnalytics(true)}
+              style={{ textDecoration: 'none' }}
+            >
+              Analytics
             </button>
             <button 
               className="btn btn-link text-white" 
@@ -267,112 +362,186 @@ function App() {
 
           {results && !loading && (
             <div>
-              {/* JSON Output First */}
-              <div className="glass-card p-4 mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h3>Raw JSON Output</h3>
-                  <button className="btn btn-outline-primary" onClick={exportResults}>
-                    Export JSON
-                  </button>
-                </div>
-                <div style={{
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  borderRadius: '10px',
-                  padding: '15px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  fontFamily: 'monospace',
-                  fontSize: '12px'
-                }}>
-                  <pre className="text-white mb-0">{JSON.stringify(results, null, 2)}</pre>
+              {/* View Mode Selector */}
+              <div className="glass-card p-3 mb-3">
+                <div className="d-flex justify-content-between align-items-center">
+                  <div className="btn-group" role="group">
+                    <button 
+                      className={`btn ${viewMode === 'json' ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => {
+                        setViewMode('json');
+                        setSelectedRows(new Set());
+                        setTotalRows(results.products?.length || 0);
+                      }}
+                    >
+                      🔧 JSON View
+                    </button>
+                    <button 
+                      className={`btn ${viewMode === 'formatted' ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => {
+                        setViewMode('formatted');
+                        setSelectedRows(new Set());
+                        setTotalRows(results.products?.length || 0);
+                      }}
+                    >
+                      📋 Card View
+                    </button>
+                    <button 
+                      className={`btn ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => {
+                        setViewMode('table');
+                        setTotalRows(results.products?.length || 0);
+                      }}
+                    >
+                      📊 Table View
+                    </button>
+                  </div>
+                  
+                  <div className="dropdown" style={{ position: 'relative' }}>
+                    <button 
+                      className="btn btn-success dropdown-toggle" 
+                      type="button" 
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const viewportHeight = window.innerHeight;
+                        const dropdownHeight = 200; // Estimated dropdown height
+                        
+                        // Calculate if dropdown should open upward
+                        const spaceBelow = viewportHeight - rect.bottom;
+                        const shouldOpenUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+                        
+                        setDropdownPosition({
+                          top: shouldOpenUp ? rect.top - dropdownHeight - 10 : rect.bottom + 5,
+                          right: window.innerWidth - rect.right
+                        });
+                        setShowExportDropdown(!showExportDropdown);
+                      }}
+                    >
+                      📥 Export Data {selectedRows.size > 0 ? `(${selectedRows.size} selected)` : `(${totalRows} total)`}
+                    </button>
+                  </div>
+                  
                 </div>
               </div>
 
-              {/* Formatted Results */}
-              <div className="glass-card p-4">
-                <h3 className="mb-3">Formatted Results</h3>
-
-                {/* Summary */}
-                <div className="row mb-4 p-3 bg-light rounded">
-                  <div className="col-md-3 text-center">
-                    <h4 className="text-primary">{results.summary?.total_products || 0}</h4>
-                    <small>Total Products</small>
-                  </div>
-                  <div className="col-md-3 text-center">
-                    <h4 className="text-success">{results.summary?.products_with_price || 0}</h4>
-                    <small>With Price</small>
-                  </div>
-                  <div className="col-md-3 text-center">
-                    <h4 className="text-info">{results.summary?.products_with_rating || 0}</h4>
-                    <small>With Rating</small>
-                  </div>
-                  <div className="col-md-3 text-center">
-                    <h4 className="text-warning">{results.summary?.products_with_discounts || 0}</h4>
-                    <small>With Discounts</small>
+              {/* JSON View */}
+              {viewMode === 'json' && (
+                <div className="glass-card p-4">
+                  <h3 className="mb-3">Raw JSON Output</h3>
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '10px',
+                    padding: '15px',
+                    maxHeight: '500px',
+                    overflowY: 'auto',
+                    fontFamily: 'monospace',
+                    fontSize: '12px'
+                  }}>
+                    <pre className="text-white mb-0">{JSON.stringify(results, null, 2)}</pre>
                   </div>
                 </div>
+              )}
 
-                {/* Products/Results */}
-                <div>
-                  {results.products?.slice(0, 20).map((item, index) => (
-                    <div key={index} className="product-card">
-                      <div className="row align-items-center">
-                        <div className="col-md-2">
-                          {item.image_url && (
-                            <img 
-                              src={item.image_url} 
-                              alt={item.name || item.title} 
-                              className="product-image img-fluid"
-                            />
-                          )}
-                        </div>
-                        <div className="col-md-7">
-                          <h6>{item.name || item.title || item.youtube_url}</h6>
-                          
-                          {/* E-commerce specific */}
-                          {item.brand && <small className="text-muted">Brand: {item.brand}</small>}
-                          
-                          {/* YouTube specific */}
-                          {item.creator_name && <small className="text-muted">Creator: {item.creator_name}</small>}
-                          {item.duration && <small className="text-muted"> • Duration: {Math.floor(item.duration/60)}:{(item.duration%60).toString().padStart(2,'0')}</small>}
-                          
-                          {/* Wikipedia specific */}
-                          {item.snippet && <div className="small text-muted mt-1" dangerouslySetInnerHTML={{__html: item.snippet}}></div>}
-                          
-                          <div className="mt-2">
-                            {/* E-commerce badges */}
-                            {item.price && <span className="badge bg-success me-2">{item.price}</span>}
-                            {item.original_price && <span className="badge bg-secondary me-2"><s>{item.original_price}</s></span>}
-                            {item.discount_percentage && <span className="badge bg-danger me-2">{item.discount_percentage}</span>}
-                            {item.rating && <span className="badge bg-warning me-2">⭐ {item.rating}</span>}
+              {/* Table View */}
+              {viewMode === 'table' && (
+                <TableView 
+                  data={results.products || []} 
+                  title={`${selectedScraper} Results`}
+                  onSelectionChange={(selected, total) => {
+                    setSelectedRows(selected);
+                    setTotalRows(total);
+                  }}
+                  hideExportOptions={true}
+                />
+              )}
+
+              {/* Formatted Card View */}
+              {viewMode === 'formatted' && (
+                <div className="glass-card p-4">
+                  <h3 className="mb-3">Formatted Results</h3>
+
+                  {/* Summary */}
+                  <div className="row mb-4 p-3 bg-light rounded">
+                    <div className="col-md-3 text-center">
+                      <h4 className="text-primary">{results.summary?.total_products || 0}</h4>
+                      <small>Total Products</small>
+                    </div>
+                    <div className="col-md-3 text-center">
+                      <h4 className="text-success">{results.summary?.products_with_price || 0}</h4>
+                      <small>With Price</small>
+                    </div>
+                    <div className="col-md-3 text-center">
+                      <h4 className="text-info">{results.summary?.products_with_rating || 0}</h4>
+                      <small>With Rating</small>
+                    </div>
+                    <div className="col-md-3 text-center">
+                      <h4 className="text-warning">{results.summary?.products_with_discounts || 0}</h4>
+                      <small>With Discounts</small>
+                    </div>
+                  </div>
+
+                  {/* Products/Results */}
+                  <div>
+                    {results.products?.slice(0, 20).map((item, index) => (
+                      <div key={index} className="product-card">
+                        <div className="row align-items-center">
+                          <div className="col-md-2">
+                            {item.image_url && (
+                              <img 
+                                src={item.image_url} 
+                                alt={item.name || item.title} 
+                                className="product-image img-fluid"
+                              />
+                            )}
+                          </div>
+                          <div className="col-md-7">
+                            <h6>{item.name || item.title || item.youtube_url}</h6>
                             
-                            {/* YouTube badges */}
-                            {item.like_count && <span className="badge bg-info me-2">👍 {item.like_count.toLocaleString()}</span>}
-                            {item.upload_date && <span className="badge bg-light text-dark me-2">📅 {item.upload_date}</span>}
+                            {/* E-commerce specific */}
+                            {item.brand && <small className="text-muted">Brand: {item.brand}</small>}
+                            
+                            {/* YouTube specific */}
+                            {item.creator_name && <small className="text-muted">Creator: {item.creator_name}</small>}
+                            {item.duration && <small className="text-muted"> • Duration: {Math.floor(item.duration/60)}:{(item.duration%60).toString().padStart(2,'0')}</small>}
+                            
+                            {/* Wikipedia specific */}
+                            {item.snippet && <div className="small text-muted mt-1" dangerouslySetInnerHTML={{__html: item.snippet}}></div>}
+                            
+                            <div className="mt-2">
+                              {/* E-commerce badges */}
+                              {item.price && <span className="badge bg-success me-2">{item.price}</span>}
+                              {item.original_price && <span className="badge bg-secondary me-2"><s>{item.original_price}</s></span>}
+                              {item.discount_percentage && <span className="badge bg-danger me-2">{item.discount_percentage}</span>}
+                              {item.rating && <span className="badge bg-warning me-2">⭐ {item.rating}</span>}
+                              
+                              {/* YouTube badges */}
+                              {item.like_count && <span className="badge bg-info me-2">👍 {item.like_count.toLocaleString()}</span>}
+                              {item.upload_date && <span className="badge bg-light text-dark me-2">📅 {item.upload_date}</span>}
+                            </div>
+                          </div>
+                          <div className="col-md-3 text-end">
+                            {(item.url || item.youtube_url) && (
+                              <a 
+                                href={item.url || item.youtube_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="btn btn-sm btn-outline-primary"
+                              >
+                                {item.youtube_url ? 'Watch Video' : item.url ? 'View Page' : 'View Item'}
+                              </a>
+                            )}
                           </div>
                         </div>
-                        <div className="col-md-3 text-end">
-                          {(item.url || item.youtube_url) && (
-                            <a 
-                              href={item.url || item.youtube_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="btn btn-sm btn-outline-primary"
-                            >
-                              {item.youtube_url ? 'Watch Video' : item.url ? 'View Page' : 'View Item'}
-                            </a>
-                          )}
-                        </div>
                       </div>
-                    </div>
-                  ))}
-                  {results.products?.length > 20 && (
-                    <p className="text-center text-muted">
-                      Showing first 20 of {results.products.length} products. Export JSON to see all results.
-                    </p>
-                  )}
+                    ))}
+                    {results.products?.length > 20 && (
+                      <p className="text-center text-muted">
+                        Showing first 20 of {results.products.length} products. Use Table View or Export to see all results.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -387,6 +556,7 @@ function App() {
 
       {/* Modals */}
       {showRequests && <RequestsPage onClose={() => setShowRequests(false)} />}
+      {showAnalytics && <Analytics onClose={() => setShowAnalytics(false)} />}
       
       {showAbout && (
         <div className="modal-overlay" onClick={() => setShowAbout(false)}>
@@ -453,6 +623,240 @@ function App() {
           cursor: pointer;
         }
       `}</style>
+
+      {/* Global Export Dropdown Portal */}
+      {showExportDropdown && (
+        <>
+          <div 
+            className="dropdown-backdrop"
+            onClick={() => setShowExportDropdown(false)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9998,
+              background: 'transparent'
+            }}
+          />
+          <div 
+            className="export-dropdown-portal" 
+            style={{ 
+              position: 'fixed',
+              top: `${dropdownPosition.top}px`,
+              right: `${dropdownPosition.right}px`,
+              zIndex: 9999,
+              minWidth: '200px',
+              background: 'var(--dropdown-bg)',
+              border: '1px solid var(--card-border)',
+              borderRadius: '10px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(20px)',
+              padding: '8px',
+              animation: 'dropdownFadeIn 0.15s ease-out'
+            }}
+          >
+            {selectedRows.size > 0 ? (
+              <>
+                <div style={{ padding: '8px 16px', fontSize: '12px', color: 'var(--text-muted)', borderBottom: '1px solid var(--card-border)', marginBottom: '4px' }}>
+                  Export Selected ({selectedRows.size} rows)
+                </div>
+                <button 
+                  className="dropdown-item-custom" 
+                  onClick={() => { handleExport('json', 'selected'); setShowExportDropdown(false); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: 'var(--text-color)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    marginBottom: '4px'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                >
+                  🔧 Selected as JSON
+                </button>
+                <button 
+                  className="dropdown-item-custom" 
+                  onClick={() => { handleExport('csv', 'selected'); setShowExportDropdown(false); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: 'var(--text-color)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    marginBottom: '4px'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                >
+                  📊 Selected as CSV
+                </button>
+                <button 
+                  className="dropdown-item-custom" 
+                  onClick={() => { handleExport('excel', 'selected'); setShowExportDropdown(false); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: 'var(--text-color)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    marginBottom: '4px'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                >
+                  📈 Selected as Excel
+                </button>
+                <button 
+                  className="dropdown-item-custom" 
+                  onClick={() => { handleExport('xml', 'selected'); setShowExportDropdown(false); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: 'var(--text-color)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    marginBottom: '8px'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                >
+                  📄 Selected as XML
+                </button>
+                <div style={{ padding: '8px 16px', fontSize: '12px', color: 'var(--text-muted)', borderTop: '1px solid var(--card-border)', borderBottom: '1px solid var(--card-border)', marginBottom: '4px' }}>
+                  Export All Data ({totalRows} rows)
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: '8px 16px', fontSize: '12px', color: 'var(--text-muted)', borderBottom: '1px solid var(--card-border)', marginBottom: '4px' }}>
+                Export All Data ({totalRows} rows)
+              </div>
+            )}
+            <button 
+              className="dropdown-item-custom" 
+              onClick={() => { handleExport('json', 'all'); setShowExportDropdown(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '12px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'var(--text-color)',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '4px'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+              onMouseLeave={(e) => e.target.style.background = 'transparent'}
+            >
+              🔧 All as JSON
+            </button>
+            <button 
+              className="dropdown-item-custom" 
+              onClick={() => { handleExport('csv', 'all'); setShowExportDropdown(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '12px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'var(--text-color)',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '4px'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+              onMouseLeave={(e) => e.target.style.background = 'transparent'}
+            >
+              📊 All as CSV
+            </button>
+            <button 
+              className="dropdown-item-custom" 
+              onClick={() => { handleExport('excel', 'all'); setShowExportDropdown(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '12px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'var(--text-color)',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '4px'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+              onMouseLeave={(e) => e.target.style.background = 'transparent'}
+            >
+              📈 All as Excel
+            </button>
+            <button 
+              className="dropdown-item-custom" 
+              onClick={() => { handleExport('xml', 'all'); setShowExportDropdown(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '12px 16px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'var(--text-color)',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'var(--dropdown-item-hover)'}
+              onMouseLeave={(e) => e.target.style.background = 'transparent'}
+            >
+              📄 All as XML
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

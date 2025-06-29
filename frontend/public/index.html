@@ -13,35 +13,49 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
       
+      /* CSS Custom Properties for theming */
+      :root {
+        --text-color: #ffffff;
+        --text-muted: rgba(255, 255, 255, 0.6);
+        --card-bg: rgba(255, 255, 255, 0.1);
+        --card-border: rgba(255, 255, 255, 0.2);
+        --input-bg: rgba(255, 255, 255, 0.1);
+        --input-border: rgba(255, 255, 255, 0.2);
+        --dropdown-bg: rgba(0, 0, 0, 0.95);
+        --dropdown-item-hover: rgba(255, 255, 255, 0.1);
+      }
+
       /* Glass morphism containers */
       .glass-card {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--card-bg);
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid var(--card-border);
         border-radius: 20px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         transition: all 0.3s ease;
       }
       
       .glass-card:hover {
-        background: rgba(255, 255, 255, 0.15);
+        background: var(--card-bg);
+        filter: brightness(1.1);
         transform: translateY(-5px);
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
       }
       
       /* Scraper selection cards */
       .scraper-card { 
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--card-bg);
         backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        border: 1px solid var(--card-border);
         border-radius: 15px;
         transition: all 0.3s ease;
         cursor: pointer;
-        color: #ffffff;
+        color: var(--text-color);
       }
       
       .scraper-card:hover { 
-        background: rgba(255, 255, 255, 0.12);
+        background: var(--card-bg);
+        filter: brightness(1.2);
         transform: translateY(-3px);
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
       }
@@ -54,22 +68,23 @@
       
       /* Form controls */
       .form-control {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: var(--input-bg);
+        border: 1px solid var(--input-border);
         border-radius: 10px;
-        color: #ffffff;
+        color: var(--text-color);
         backdrop-filter: blur(10px);
       }
       
       .form-control:focus {
-        background: rgba(255, 255, 255, 0.15);
+        background: var(--input-bg);
+        filter: brightness(1.2);
         border-color: rgba(0, 123, 255, 0.6);
         box-shadow: 0 0 15px rgba(0, 123, 255, 0.3);
-        color: #ffffff;
+        color: var(--text-color);
       }
       
       .form-control::placeholder {
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--text-muted);
       }
       
       /* Buttons */
@@ -120,17 +135,19 @@
       
       /* Product cards */
       .product-card { 
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--card-bg);
         backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        border: 1px solid var(--card-border);
         border-radius: 15px;
         padding: 20px;
         margin-bottom: 15px;
         transition: all 0.3s ease;
+        color: var(--text-color);
       }
       
       .product-card:hover {
-        background: rgba(255, 255, 255, 0.12);
+        background: var(--card-bg);
+        filter: brightness(1.1);
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
       }
@@ -175,14 +192,142 @@
       
       /* Summary stats */
       .bg-light {
-        background: rgba(255, 255, 255, 0.1) !important;
+        background: var(--card-bg) !important;
         backdrop-filter: blur(15px);
         border-radius: 15px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid var(--card-border);
+        color: var(--text-color) !important;
+      }
+      
+      /* Dropdown menus */
+      .dropdown-menu {
+        background: var(--dropdown-bg) !important;
+        border: 1px solid var(--card-border) !important;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4) !important;
+        z-index: 1050 !important;
+        animation: dropdownFadeIn 0.15s ease-out;
+      }
+      
+      @keyframes dropdownFadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      
+      .dropdown-item {
+        color: var(--text-color) !important;
+        padding: 12px 18px;
+        border-radius: 6px;
+        margin: 2px 4px;
+        transition: all 0.2s ease;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .dropdown-item:hover {
+        background: var(--dropdown-item-hover) !important;
+        color: var(--text-color) !important;
+        transform: translateX(3px);
+      }
+      
+      .dropdown-item:active {
+        background: rgba(0, 123, 255, 0.2) !important;
+      }
+      
+      .dropdown-backdrop {
+        background: transparent;
+        pointer-events: auto;
+      }
+      
+      /* Ensure dropdowns appear above all content */
+      .dropdown {
+        z-index: 1000;
+      }
+      
+      .dropdown.show {
+        z-index: 1060;
+      }
+      
+      /* Override any conflicting z-index */
+      .glass-card {
+        z-index: 1;
+      }
+      
+      .table-responsive {
+        z-index: 1;
+      }
+      
+      /* Export dropdown portal with maximum z-index */
+      .export-dropdown-portal {
+        z-index: 9999 !important;
+        position: fixed !important;
+      }
+      
+      .dropdown-backdrop {
+        z-index: 9998 !important;
+        position: fixed !important;
+      }
+      
+      /* Ensure all other elements have lower z-index */
+      .container-fluid {
+        z-index: 1;
+      }
+      
+      .row {
+        z-index: 1;
+      }
+      
+      /* Table styles for white theme */
+      .table-dark {
+        --bs-table-bg: var(--card-bg);
+        --bs-table-color: var(--text-color);
+      }
+      
+      .table-dark th,
+      .table-dark td {
+        color: var(--text-color) !important;
+        border-color: var(--card-border) !important;
+      }
+      
+      /* Additional white theme fixes */
+      h1, h2, h3, h4, h5, h6 {
+        color: var(--text-color) !important;
+      }
+      
+      .text-white {
+        color: var(--text-color) !important;
+      }
+      
+      .btn-link {
+        color: var(--text-color) !important;
+      }
+      
+      .btn-link:hover {
+        color: var(--text-color) !important;
+        opacity: 0.8;
+      }
+      
+      /* JSON code block styling */
+      pre {
+        color: var(--text-color) !important;
+      }
+      
+      /* Modal content */
+      .modal-content {
+        color: var(--text-color) !important;
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   </body>
 </html>
